@@ -1,0 +1,77 @@
+# =============================================================================
+# General
+# (myhostname, myorigin, mynetworks are overridden by postconf -e in entrypoint.sh)
+# =============================================================================
+compatibility_level = 3.6
+myhostname = localhost
+myorigin = localhost
+mydestination =
+mynetworks = 127.0.0.0/8 [::1]/128
+
+# Pass Docker environment variables through to the graph pipe transport.
+# import_environment: what Postfix master keeps from Docker's environment at startup.
+# export_environment: what pipe(8) passes to the child command (graph-send.py).
+# Both must list the same custom variables.
+import_environment = MAIL_CONFIG MAIL_DEBUG MAIL_LOGTAG TZ XAUTHORITY DISPLAY LANG TERM
+    OAUTH2_TENANT_ID OAUTH2_CLIENT_ID OAUTH2_AUTH_TYPE OAUTH2_CLIENT_SECRET
+    OAUTH2_CERT_PATH OAUTH2_KEY_PATH
+    LOG_LEVEL GRAPH_SAVE_TO_SENT_ITEMS GRAPH_LARGE_ATTACHMENTS
+
+export_environment = TZ MAIL_CONFIG LANGUAGE
+    OAUTH2_TENANT_ID OAUTH2_CLIENT_ID OAUTH2_AUTH_TYPE OAUTH2_CLIENT_SECRET
+    OAUTH2_CERT_PATH OAUTH2_KEY_PATH
+    LOG_LEVEL GRAPH_SAVE_TO_SENT_ITEMS GRAPH_LARGE_ATTACHMENTS
+
+inet_interfaces = all
+inet_protocols = ipv4
+
+# =============================================================================
+# Outbound delivery (Microsoft Graph sendMail via pipe transport)
+# =============================================================================
+default_transport = graph:
+relay_transport = graph:
+graph_destination_recipient_limit = 50
+
+# =============================================================================
+# Inbound TLS (from local applications)
+# =============================================================================
+smtpd_tls_security_level = may
+smtpd_tls_cert_file = /certs/smtp.crt
+smtpd_tls_key_file = /certs/smtp.key
+smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+
+# =============================================================================
+# Inbound SASL authentication (from local applications via sasldb2)
+# =============================================================================
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = cyrus
+smtpd_sasl_path = smtpd
+smtpd_sasl_security_options = noanonymous, noplaintext
+smtpd_sasl_tls_security_options = noanonymous
+broken_sasl_auth_clients = yes
+
+# =============================================================================
+# Restrictions
+# =============================================================================
+smtpd_helo_required = yes
+
+smtpd_sender_restrictions =
+    check_sender_access hash:/etc/postfix/sasl/allowed_senders,
+    reject
+
+smtpd_relay_restrictions =
+    permit_mynetworks
+    reject
+
+smtpd_recipient_restrictions =
+    permit_mynetworks
+    permit_sasl_authenticated
+    reject_unauth_destination
+
+# =============================================================================
+# Limits and timeouts
+# =============================================================================
+message_size_limit = 26214400
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d

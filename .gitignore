@@ -1,0 +1,24 @@
+# Secrets & environment
+.env
+.env.*
+!.env.example
+
+# TLS certificates and private keys
+certs/
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

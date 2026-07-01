@@ -1,0 +1,89 @@
+services:
+  postfix-relay:
+    build:
+      context: .
+    container_name: postfix-relay
+    restart: unless-stopped
+
+    # =========================================================================
+    # Ports
+    # =========================================================================
+    ports:
+      - "${LISTEN_ADDRESS:-0.0.0.0}:${SMTP_PORT:-25}:25"
+      - "${LISTEN_ADDRESS:-0.0.0.0}:${SUBMISSION_PORT:-587}:587"
+
+    # =========================================================================
+    # Environment
+    # =========================================================================
+    environment:
+      # General
+      RELAY_HOSTNAME:         ${RELAY_HOSTNAME}
+      RELAY_ALLOWED_NETWORKS: ${RELAY_ALLOWED_NETWORKS}
+      RELAY_FROM_ADDRESSES:   ${RELAY_FROM_ADDRESSES}
+
+      # Logging
+      LOG_LEVEL:              ${LOG_LEVEL:-info}
+
+      # Inbound TLS (none / may / encrypt)
+      SMTP_TLS_LEVEL:         ${SMTP_TLS_LEVEL:-may}
+      SUBMISSION_TLS_LEVEL:   ${SUBMISSION_TLS_LEVEL:-may}
+
+      # OAuth2
+      OAUTH2_TENANT_ID:       ${OAUTH2_TENANT_ID}
+      OAUTH2_CLIENT_ID:       ${OAUTH2_CLIENT_ID}
+      OAUTH2_AUTH_TYPE:       ${OAUTH2_AUTH_TYPE}
+
+      # OAuth2 - only required when OAUTH2_AUTH_TYPE=secret
+      OAUTH2_CLIENT_SECRET:   ${OAUTH2_CLIENT_SECRET:-}
+
+      # OAuth2 - only required when OAUTH2_AUTH_TYPE=certificate
+      OAUTH2_CERT_PATH:       ${OAUTH2_CERT_PATH:-/certs/smtp.crt}
+      OAUTH2_KEY_PATH:        ${OAUTH2_KEY_PATH:-/certs/smtp.key}
+
+      # Graph delivery options
+      GRAPH_SAVE_TO_SENT_ITEMS:  ${GRAPH_SAVE_TO_SENT_ITEMS:-false}
+      GRAPH_LARGE_ATTACHMENTS:   ${GRAPH_LARGE_ATTACHMENTS:-true}
+
+    # =========================================================================
+    # Volumes
+    # =========================================================================
+    volumes:
+      # Certificate and private key (bind mount from host)
+      - ${CERTS_DIR:-./certs}:/certs:ro
+
+      # SASL user database (manage with manage-users.sh)
+      - ${SASLDB_DIR:-./sasldb}:/var/lib/sasl2
+
+      # Persistent mail queue (survive container restarts)
+      - postfix-queue:/var/spool/postfix
+
+      # Persistent logs
+      - postfix-logs:/var/log
+
+    # =========================================================================
+    # Health check
+    # =========================================================================
+    healthcheck:
+      test: ["CMD", "postfix", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # =========================================================================
+    # Logging
+    # =========================================================================
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postfix-queue:
+    driver: local
+  postfix-logs:
+    driver: local
