@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# SASL user database (contains hashed passwords)
+sasldb/
+
 # TLS certificates and private keys
 certs/
 *.crt
