@@ -87,7 +87,7 @@ openssl req -x509 -newkey rsa:4096 \
     -keyout ./certs/entra.key \
     -out ./certs/entra.crt \
     -days 3650 -nodes \
-    -subj "/CN=smtp-relay"
+    -subj "/CN=smtp-to-office365"
 ```
 
 Upload the public certificate to Entra ID:
@@ -143,13 +143,18 @@ To add a mailbox later: `Add-DistributionGroupMember -Identity "SMTP Relay Mailb
 
 **To revoke all access:**
 
+> **Warning:** Removing the Application Access Policy alone does **not** revoke access — it removes the scope restriction, giving the app access to **all mailboxes** in the tenant. Always remove the API permissions in Entra ID as well.
+
+1. Remove the policy (Exchange Online PowerShell):
 ```powershell
 # Find the policy ID
 Get-ApplicationAccessPolicy | Where-Object { $_.AppId -eq $appId } | Format-List
 
-# Remove the policy (restores tenant-wide access — also remove the Mail.Send/Mail.ReadWrite app permissions in Entra ID)
 Remove-ApplicationAccessPolicy -Identity <policy-id>
 ```
+
+2. Remove the API permissions in Entra ID:  
+   Go to the App Registration → **API permissions** → remove `Mail.Send` and `Mail.ReadWrite`
 
 ---
 

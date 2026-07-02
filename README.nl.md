@@ -87,7 +87,7 @@ openssl req -x509 -newkey rsa:4096 \
     -keyout ./certs/entra.key \
     -out ./certs/entra.crt \
     -days 3650 -nodes \
-    -subj "/CN=smtp-relay"
+    -subj "/CN=smtp-to-office365"
 ```
 
 Upload het publieke certificaat naar Entra ID:
@@ -141,15 +141,20 @@ Test-ApplicationAccessPolicy -AppId $appId -Identity other@example.com    # moet
 
 Een mailbox later toevoegen: `Add-DistributionGroupMember -Identity "SMTP Relay Mailboxen" -Member nieuwadres@example.com`
 
-**Toegang intrekken:**
+**Toegang volledig intrekken:**
 
+> **Waarschuwing:** Het verwijderen van de Application Access Policy alleen trekt de toegang **niet** in — het verwijdert alleen de beperking, waardoor de app toegang krijgt tot **alle mailboxen** in de tenant. Verwijder altijd ook de API-rechten in Entra ID.
+
+1. Verwijder de policy (Exchange Online PowerShell):
 ```powershell
 # Zoek het policy-ID op
 Get-ApplicationAccessPolicy | Where-Object { $_.AppId -eq $appId } | Format-List
 
-# Verwijder de policy (hiermee vervalt de beperking — verwijder ook de Mail.Send/Mail.ReadWrite-rechten in Entra ID)
 Remove-ApplicationAccessPolicy -Identity <policy-id>
 ```
+
+2. Verwijder de API-rechten in Entra ID:  
+   Ga naar de App Registration → **API permissions** → verwijder `Mail.Send` en `Mail.ReadWrite`
 
 ---
 
