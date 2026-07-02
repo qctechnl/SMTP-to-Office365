@@ -13,9 +13,9 @@ Commands:
   list                         List all users in the database
 
 Examples:
-  docker exec -it postfix-relay manage-users.sh add john example.com
-  docker exec -it postfix-relay manage-users.sh delete john example.com
-  docker exec -it postfix-relay manage-users.sh list
+  docker exec -it smtp-to-office365 manage-users.sh add john example.com
+  docker exec -it smtp-to-office365 manage-users.sh delete john example.com
+  docker exec -it smtp-to-office365 manage-users.sh list
 USAGE
 }
 

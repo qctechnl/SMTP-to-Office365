@@ -50,7 +50,7 @@ Microsoft Graph sendMail API
 ### 1. App Registration aanmaken
 
 1. Ga naar **Entra ID** → **App registrations** → **New registration**
-2. Naam: bijv. `SMTP Relay`
+2. Naam: bijv. `SMTP-to-Office365 Relay`
 3. Supported account types: **Accounts in this organizational directory only**
 4. Redirect URI: leeg laten
 5. Klik op **Register**
@@ -125,26 +125,26 @@ $appId = "<application-client-id>"
 
 # 1. Maak een Exchange service principal die naar de enterprise application van de app wijst.
 #    Object ID komt van Entra ID > Enterprise applications (NIET de App registrations-pagina).
-New-ServicePrincipal -AppId $appId -ObjectId "<enterprise-app-object-id>" -DisplayName "SMTP Relay"
+New-ServicePrincipal -AppId $appId -ObjectId "<enterprise-app-object-id>" -DisplayName "SMTP-to-Office365 Relay"
 
 # 2. Maak een mail-enabled security group met precies de mailboxen uit RELAY_FROM_ADDRESSES.
-$group = New-DistributionGroup -Name "SMTP Relay Mailboxen" -Type Security -Members relay@example.com, noreply@example.com
+$group = New-DistributionGroup -Name "SMTP-to-Office365 Relay Mailboxen" -Type Security -Members relay@example.com, noreply@example.com
 
 # 3. Maak een management scope die beperkt is tot DIRECTE leden van die groep.
 #    MemberOfGroup vereist de distinguished name van de groep (geneste groepen vallen buiten scope).
-New-ManagementScope -Name "SMTP Relay Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"
+New-ManagementScope -Name "SMTP-to-Office365 Relay Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"
 
 # 4. Wijs de gescopete application-rol toe.
 #    GRAPH_LARGE_ATTACHMENTS=true (standaard) -> "Application Mail Full Access" (Mail.Send + Mail.ReadWrite)
 #    GRAPH_LARGE_ATTACHMENTS=false             -> "Application Mail.Send"
-New-ManagementRoleAssignment -App $appId -Role "Application Mail Full Access" -CustomResourceScope "SMTP Relay Scope"
+New-ManagementRoleAssignment -App $appId -Role "Application Mail Full Access" -CustomResourceScope "SMTP-to-Office365 Relay Scope"
 
 # 5. Verifieer (deze test-cmdlet omzeilt de permissie-cache).
 Test-ServicePrincipalAuthorization -Identity $appId -Resource relay@example.com | Format-Table   # InScope moet True zijn
 Test-ServicePrincipalAuthorization -Identity $appId -Resource other@example.com  | Format-Table   # InScope moet False zijn
 ```
 
-Een mailbox later toevoegen: `Add-DistributionGroupMember -Identity "SMTP Relay Mailboxen" -Member nieuwadres@example.com`
+Een mailbox later toevoegen: `Add-DistributionGroupMember -Identity "SMTP-to-Office365 Relay Mailboxen" -Member nieuwadres@example.com`
 
 > **Propagatie:** RBAC-wijzigingen zijn actief na een cache-verversing van 30 minuten tot 2 uur. `Test-ServicePrincipalAuthorization` omzeilt die cache, dus gebruik die om de configuratie direct te verifiëren in plaats van te wachten tot een live verzending slaagt.
 
@@ -170,7 +170,7 @@ Remove-ManagementRoleAssignment -Identity "<assignment-name>"
 
 # Verwijder eventueel ook de service principal-pointer en de scope
 Remove-ServicePrincipal -Identity $appId
-Remove-ManagementScope -Identity "SMTP Relay Scope"
+Remove-ManagementScope -Identity "SMTP-to-Office365 Relay Scope"
 ```
 
 ---
