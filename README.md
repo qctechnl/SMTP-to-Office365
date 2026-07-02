@@ -4,7 +4,7 @@
 [![Docker Image Version](https://img.shields.io/docker/v/qctechnl/smtp-to-office365?sort=semver)](https://hub.docker.com/r/qctechnl/smtp-to-office365/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A containerised Postfix SMTP relay that forwards mail to Office 365 via OAuth2 (client credentials flow). Inbound connections are accepted on port 25 and 587 with optional TLS and SASL authentication.
+A containerised Postfix SMTP relay that delivers mail to Office 365 through the Microsoft Graph API (`sendMail`), authenticated with Entra ID (OAuth2 client credentials — secret or certificate). Inbound connections are accepted on port 25 and 587 with optional TLS and SASL authentication.
 
 **Intended use:** letting legacy systems and appliances (that only speak plain SMTP) send notifications and alerts securely through Entra ID, on behalf of a small, explicitly listed set of sender mailboxes. It is deliberately **not** a general-purpose relay for the whole organisation — access is scoped to the mailboxes in `RELAY_FROM_ADDRESSES`, enforced both at the SMTP layer and by RBAC for Applications in Exchange Online (see step 4).
 
@@ -50,7 +50,7 @@ Microsoft Graph sendMail API
 ### 1. Create an App Registration
 
 1. Go to **Entra ID** → **App registrations** → **New registration**
-2. Name: e.g. `SMTP Relay`
+2. Name: e.g. `SMTP-to-Office365 Relay`
 3. Supported account types: **Accounts in this organizational directory only**
 4. Redirect URI: leave empty
 5. Click **Register**
@@ -125,26 +125,26 @@ $appId = "<application-client-id>"
 
 # 1. Create an Exchange service principal that points to the app's enterprise application.
 #    Object ID comes from Entra ID > Enterprise applications (NOT the App registrations page).
-New-ServicePrincipal -AppId $appId -ObjectId "<enterprise-app-object-id>" -DisplayName "SMTP Relay"
+New-ServicePrincipal -AppId $appId -ObjectId "<enterprise-app-object-id>" -DisplayName "SMTP-to-Office365 Relay"
 
 # 2. Create a mail-enabled security group containing exactly the mailboxes in RELAY_FROM_ADDRESSES.
-$group = New-DistributionGroup -Name "SMTP Relay Mailboxes" -Type Security -Members relay@example.com, noreply@example.com
+$group = New-DistributionGroup -Name "SMTP-to-Office365 Relay Mailboxes" -Type Security -Members relay@example.com, noreply@example.com
 
 # 3. Create a management scope restricted to DIRECT members of that group.
 #    MemberOfGroup requires the group's distinguished name (nested groups are out of scope).
-New-ManagementScope -Name "SMTP Relay Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"
+New-ManagementScope -Name "SMTP-to-Office365 Relay Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"
 
 # 4. Assign the scoped application role.
 #    GRAPH_LARGE_ATTACHMENTS=true (default) -> "Application Mail Full Access" (Mail.Send + Mail.ReadWrite)
 #    GRAPH_LARGE_ATTACHMENTS=false           -> "Application Mail.Send"
-New-ManagementRoleAssignment -App $appId -Role "Application Mail Full Access" -CustomResourceScope "SMTP Relay Scope"
+New-ManagementRoleAssignment -App $appId -Role "Application Mail Full Access" -CustomResourceScope "SMTP-to-Office365 Relay Scope"
 
 # 5. Verify (the test cmdlet bypasses the permission cache).
 Test-ServicePrincipalAuthorization -Identity $appId -Resource relay@example.com | Format-Table   # InScope should be True
 Test-ServicePrincipalAuthorization -Identity $appId -Resource other@example.com  | Format-Table   # InScope should be False
 ```
 
-To add a mailbox later: `Add-DistributionGroupMember -Identity "SMTP Relay Mailboxes" -Member newaddress@example.com`
+To add a mailbox later: `Add-DistributionGroupMember -Identity "SMTP-to-Office365 Relay Mailboxes" -Member newaddress@example.com`
 
 > **Propagation:** RBAC changes take effect after a cache refresh of 30 minutes to 2 hours. `Test-ServicePrincipalAuthorization` bypasses that cache, so use it to confirm the configuration immediately rather than waiting for a live send to succeed.
 
@@ -170,7 +170,7 @@ Remove-ManagementRoleAssignment -Identity "<assignment-name>"
 
 # Optionally remove the service principal pointer and the scope as well
 Remove-ServicePrincipal -Identity $appId
-Remove-ManagementScope -Identity "SMTP Relay Scope"
+Remove-ManagementScope -Identity "SMTP-to-Office365 Relay Scope"
 ```
 
 ---

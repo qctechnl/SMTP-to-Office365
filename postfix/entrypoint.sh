@@ -115,7 +115,7 @@ if [[ -f "${SASLDB_FILE}" ]]; then
     chmod 640 "${SASLDB_FILE}"
 else
     echo "INFO: No sasldb2 found at ${SASLDB_FILE}. Add users with:"
-    echo "      docker exec -it postfix-relay manage-users.sh add <username> <domain>"
+    echo "      docker exec -it smtp-to-office365 manage-users.sh add <username> <domain>"
 fi
 
 # =============================================================================
