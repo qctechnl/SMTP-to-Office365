@@ -8,9 +8,9 @@ required_vars=(
     RELAY_HOSTNAME
     RELAY_ALLOWED_NETWORKS
     RELAY_FROM_ADDRESSES
-    OAUTH2_TENANT_ID
-    OAUTH2_CLIENT_ID
-    OAUTH2_AUTH_TYPE
+    ENTRA_TENANT_ID
+    ENTRA_CLIENT_ID
+    ENTRA_AUTH_TYPE
 )
 
 for var in "${required_vars[@]}"; do
@@ -21,33 +21,33 @@ for var in "${required_vars[@]}"; do
 done
 
 # Validate auth type and check auth-specific variables
-case "${OAUTH2_AUTH_TYPE}" in
+case "${ENTRA_AUTH_TYPE}" in
     certificate)
-        if [[ -z "${OAUTH2_CERT_PATH}" ]]; then
-            echo "ERROR: OAUTH2_CERT_PATH is required when OAUTH2_AUTH_TYPE=certificate"
+        if [[ -z "${ENTRA_CERT_PATH}" ]]; then
+            echo "ERROR: ENTRA_CERT_PATH is required when ENTRA_AUTH_TYPE=certificate"
             exit 1
         fi
-        if [[ -z "${OAUTH2_KEY_PATH}" ]]; then
-            echo "ERROR: OAUTH2_KEY_PATH is required when OAUTH2_AUTH_TYPE=certificate"
+        if [[ -z "${ENTRA_KEY_PATH}" ]]; then
+            echo "ERROR: ENTRA_KEY_PATH is required when ENTRA_AUTH_TYPE=certificate"
             exit 1
         fi
-        if [[ ! -f "${OAUTH2_CERT_PATH}" ]]; then
-            echo "ERROR: Certificate file not found at ${OAUTH2_CERT_PATH}"
+        if [[ ! -f "${ENTRA_CERT_PATH}" ]]; then
+            echo "ERROR: Certificate file not found at ${ENTRA_CERT_PATH}"
             exit 1
         fi
-        if [[ ! -f "${OAUTH2_KEY_PATH}" ]]; then
-            echo "ERROR: Private key file not found at ${OAUTH2_KEY_PATH}"
+        if [[ ! -f "${ENTRA_KEY_PATH}" ]]; then
+            echo "ERROR: Private key file not found at ${ENTRA_KEY_PATH}"
             exit 1
         fi
         ;;
     secret)
-        if [[ -z "${OAUTH2_CLIENT_SECRET}" ]]; then
-            echo "ERROR: OAUTH2_CLIENT_SECRET is required when OAUTH2_AUTH_TYPE=secret"
+        if [[ -z "${ENTRA_CLIENT_SECRET}" ]]; then
+            echo "ERROR: ENTRA_CLIENT_SECRET is required when ENTRA_AUTH_TYPE=secret"
             exit 1
         fi
         ;;
     *)
-        echo "ERROR: OAUTH2_AUTH_TYPE must be 'certificate' or 'secret', got '${OAUTH2_AUTH_TYPE}'"
+        echo "ERROR: ENTRA_AUTH_TYPE must be 'certificate' or 'secret', got '${ENTRA_AUTH_TYPE}'"
         exit 1
         ;;
 esac
@@ -62,6 +62,10 @@ postconf -e "mynetworks = 127.0.0.0/8 [::1]/128 ${RELAY_ALLOWED_NETWORKS}"
 # Inbound TLS level per service (none / may / encrypt)
 postconf -e "smtpd_tls_security_level = ${SMTP_TLS_LEVEL:-may}"
 postconf -P "587/inet/smtpd_tls_security_level=${SUBMISSION_TLS_LEVEL:-may}"
+
+# Inbound TLS certificate (encrypts SMTP connections from local applications)
+postconf -e "smtpd_tls_cert_file = ${SMTP_TLS_CERT_PATH:-/certs/smtp.crt}"
+postconf -e "smtpd_tls_key_file = ${SMTP_TLS_KEY_PATH:-/certs/smtp.key}"
 
 # =============================================================================
 # Log level

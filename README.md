@@ -18,8 +18,8 @@ Local applications
 ┌─────────────────────┐
 │   Postfix container │
 │                     │
-│  graph-send.py      │──── token.json (refreshed every 45 min)
-│  get-oauth2-token   │──── Entra ID (MSAL, client credentials)
+│  graph-send.py      │──── Entra ID (MSAL, client credentials flow)
+│                     │──── token.json (cached, refreshed on expiry)
 └─────────────────────┘
       │
       │  HTTPS
@@ -80,8 +80,8 @@ Generate a certificate if you do not already have one:
 
 ```bash
 openssl req -x509 -newkey rsa:4096 \
-    -keyout ./certs/smtp.key \
-    -out ./certs/smtp.crt \
+    -keyout ./certs/entra.key \
+    -out ./certs/entra.crt \
     -days 3650 -nodes \
     -subj "/CN=smtp-relay"
 ```
@@ -89,14 +89,14 @@ openssl req -x509 -newkey rsa:4096 \
 Upload the public certificate to Entra ID:
 
 1. Go to the App Registration → **Certificates & secrets** → **Certificates**
-2. Click **Upload certificate** and select `smtp.crt`
+2. Click **Upload certificate** and select `entra.crt`
 3. Copy the displayed thumbprint (for reference; MSAL reads it automatically)
 
 Set in `.env`:
 ```env
-OAUTH2_AUTH_TYPE=certificate
-OAUTH2_CERT_PATH=/certs/smtp.crt
-OAUTH2_KEY_PATH=/certs/smtp.key
+ENTRA_AUTH_TYPE=certificate
+ENTRA_CERT_PATH=/certs/entra.crt
+ENTRA_KEY_PATH=/certs/entra.key
 ```
 
 ### 3b. Client secret authentication
@@ -107,8 +107,8 @@ OAUTH2_KEY_PATH=/certs/smtp.key
 
 Set in `.env`:
 ```env
-OAUTH2_AUTH_TYPE=secret
-OAUTH2_CLIENT_SECRET=your-secret-value-here
+ENTRA_AUTH_TYPE=secret
+ENTRA_CLIENT_SECRET=your-secret-value-here
 ```
 
 ### 4. Scope the app's Graph permissions in Exchange Online
@@ -151,9 +151,14 @@ Remove-ApplicationAccessPolicy -Identity <policy-id>
 
 ## TLS certificate for inbound connections
 
-To use TLS on inbound connections (ports 25/587), the container expects a certificate at the paths configured via `OAUTH2_CERT_PATH` and `OAUTH2_KEY_PATH` — or you can reuse the Entra ID certificate (if using certificate authentication).
+This relay uses two separate certificates that serve completely different purposes:
 
-For a self-signed inbound certificate:
+| Variable | Purpose |
+|---|---|
+| `SMTP_TLS_CERT_PATH` / `SMTP_TLS_KEY_PATH` | Encrypts **inbound** SMTP connections from local applications to this relay |
+| `ENTRA_CERT_PATH` / `ENTRA_KEY_PATH` | Authenticates this relay **outbound** to Microsoft Entra ID (only when `ENTRA_AUTH_TYPE=certificate`) |
+
+Generate a self-signed certificate for inbound TLS:
 
 ```bash
 mkdir -p ./certs
@@ -163,6 +168,8 @@ openssl req -x509 -newkey rsa:4096 \
     -days 3650 -nodes \
     -subj "/CN=mail.example.com"
 ```
+
+Both certificates are placed in `CERTS_DIR` (mounted as `/certs` in the container). They can point to the same file if desired, but by default use separate paths (`smtp.crt`/`smtp.key` for inbound TLS, `entra.crt`/`entra.key` for Entra ID auth).
 
 ---
 
@@ -180,9 +187,9 @@ Edit `.env` — at minimum set:
 RELAY_HOSTNAME=mail.example.com
 RELAY_ALLOWED_NETWORKS=10.0.0.0/8
 RELAY_FROM_ADDRESSES=relay@example.com
-OAUTH2_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-OAUTH2_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-OAUTH2_AUTH_TYPE=certificate
+ENTRA_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ENTRA_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ENTRA_AUTH_TYPE=certificate
 ```
 
 **2. Build and start:**
@@ -232,18 +239,20 @@ docker exec -it postfix-relay manage-users.sh delete john example.com
 | `RELAY_HOSTNAME` | yes | — | Hostname used in SMTP EHLO/HELO |
 | `RELAY_ALLOWED_NETWORKS` | yes | — | Networks allowed to relay without auth (space-separated CIDR) |
 | `RELAY_FROM_ADDRESSES` | yes | — | Space-separated list of specific mailbox addresses allowed to relay (no domain wildcards). Each must be a member of the Application Access Policy scope group in Exchange Online. |
-| `OAUTH2_TENANT_ID` | yes | — | Entra ID tenant ID |
-| `OAUTH2_CLIENT_ID` | yes | — | App registration client ID |
-| `OAUTH2_AUTH_TYPE` | yes | — | `certificate` or `secret` |
-| `OAUTH2_CERT_PATH` | if certificate | `/certs/smtp.crt` | Path to certificate inside container |
-| `OAUTH2_KEY_PATH` | if certificate | `/certs/smtp.key` | Path to private key inside container |
-| `OAUTH2_CLIENT_SECRET` | if secret | — | Client secret value |
+| `ENTRA_TENANT_ID` | yes | — | Entra ID tenant ID |
+| `ENTRA_CLIENT_ID` | yes | — | App registration client ID |
+| `ENTRA_AUTH_TYPE` | yes | — | `certificate` or `secret` |
+| `ENTRA_CERT_PATH` | if certificate | — | Path inside container to the Entra ID client certificate (not the inbound TLS cert) |
+| `ENTRA_KEY_PATH` | if certificate | — | Path inside container to the Entra ID private key |
+| `ENTRA_CLIENT_SECRET` | if secret | — | Client secret value |
 | `LISTEN_ADDRESS` | no | `0.0.0.0` | Host IP to bind on |
 | `SMTP_PORT` | no | `25` | Host port mapped to container port 25 |
 | `SUBMISSION_PORT` | no | `587` | Host port mapped to container port 587 |
 | `SMTP_TLS_LEVEL` | no | `may` | Inbound TLS on port 25: `none`, `may`, `encrypt` |
 | `SUBMISSION_TLS_LEVEL` | no | `may` | Inbound TLS on port 587: `none`, `may`, `encrypt` |
-| `CERTS_DIR` | no | `./certs` | Host directory with `smtp.crt` and `smtp.key` |
+| `SMTP_TLS_CERT_PATH` | no | `/certs/smtp.crt` | Path inside container to the inbound SMTP TLS certificate |
+| `SMTP_TLS_KEY_PATH` | no | `/certs/smtp.key` | Path inside container to the inbound SMTP TLS private key |
+| `CERTS_DIR` | no | `./certs` | Host directory mounted as `/certs`; place both the inbound TLS cert and (when applicable) the Entra ID cert here |
 | `SASLDB_DIR` | no | `./sasldb` | Host directory for the sasldb2 user database |
 | `LOG_LEVEL` | no | `info` | Log verbosity: `error` (errors only), `info` (inbound TLS summaries + one line per delivered message), `debug` (full inbound TLS + Graph API request/response logging), `verbose` (same as debug + access token logged on every fetch — do not use in production) |
 | `GRAPH_SAVE_TO_SENT_ITEMS` | no | `false` | Whether relay-sent mail appears in the sender's Sent Items folder in Office 365. Set to `true` for an audit trail visible in Outlook/OWA. |
@@ -254,10 +263,10 @@ docker exec -it postfix-relay manage-users.sh delete john example.com
 ## Security notes
 
 - **SASL over plaintext is blocked** — `smtpd_sasl_security_options = noanonymous, noplaintext` prevents PLAIN/LOGIN without TLS. Use `SUBMISSION_TLS_LEVEL=encrypt` on port 587 to enforce TLS end-to-end.
-- **Token file permissions** — `token.json` is written as `root:postfix 640`, readable only by root and the `postfix` group. It is stored inside the `postfix-queue` volume. The access token is never written to logs by `graph-send.py`; `get-oauth2-token.py` logs it only at `LOG_LEVEL=verbose`.
+- **Token file permissions** — `token.json` is written with mode `600`, owned by `graph-send:graph-send`. It is stored inside the `postfix-queue` volume and readable only by the pipe transport user. The access token is never written to logs; `graph-send.py` logs it only at `LOG_LEVEL=verbose` with an explicit warning.
 - **Network restriction** — port 25 only permits `mynetworks`. Authenticated clients can additionally relay via port 587.
 - **Restrict the Entra ID app** — `Mail.Send` and `Mail.ReadWrite` are scoped to specific mailboxes via the Application Access Policy (step 4). Do not add mailboxes to the scope group that the relay does not need. Note that `Mail.ReadWrite` allows reading mail content of scoped mailboxes (needed for the large-attachment draft flow) — keep `RELAY_FROM_ADDRESSES` limited to addresses actually used for sending.
-- **Rotate certificates and secrets** — set a calendar reminder before `OAUTH2_AUTH_TYPE=certificate` certificates expire (`-days 3650` = 10 years for self-signed). Client secrets expire on the schedule set in Entra ID.
+- **Rotate certificates and secrets** — set a calendar reminder before `ENTRA_AUTH_TYPE=certificate` certificates expire (`-days 3650` = 10 years for self-signed). Client secrets expire on the schedule set in Entra ID.
 
 ---
 

@@ -13,13 +13,13 @@ mynetworks = 127.0.0.0/8 [::1]/128
 # export_environment: what pipe(8) passes to the child command (graph-send.py).
 # Both must list the same custom variables.
 import_environment = MAIL_CONFIG MAIL_DEBUG MAIL_LOGTAG TZ XAUTHORITY DISPLAY LANG TERM
-    OAUTH2_TENANT_ID OAUTH2_CLIENT_ID OAUTH2_AUTH_TYPE OAUTH2_CLIENT_SECRET
-    OAUTH2_CERT_PATH OAUTH2_KEY_PATH
+    ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_AUTH_TYPE ENTRA_CLIENT_SECRET
+    ENTRA_CERT_PATH ENTRA_KEY_PATH
     LOG_LEVEL GRAPH_SAVE_TO_SENT_ITEMS GRAPH_LARGE_ATTACHMENTS
 
 export_environment = TZ MAIL_CONFIG LANGUAGE
-    OAUTH2_TENANT_ID OAUTH2_CLIENT_ID OAUTH2_AUTH_TYPE OAUTH2_CLIENT_SECRET
-    OAUTH2_CERT_PATH OAUTH2_KEY_PATH
+    ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_AUTH_TYPE ENTRA_CLIENT_SECRET
+    ENTRA_CERT_PATH ENTRA_KEY_PATH
     LOG_LEVEL GRAPH_SAVE_TO_SENT_ITEMS GRAPH_LARGE_ATTACHMENTS
 
 inet_interfaces = all
@@ -34,6 +34,8 @@ graph_destination_recipient_limit = 50
 
 # =============================================================================
 # Inbound TLS (from local applications)
+# (smtpd_tls_cert_file and smtpd_tls_key_file are set at startup by entrypoint.sh
+#  via SMTP_TLS_CERT_PATH / SMTP_TLS_KEY_PATH; values below are static fallbacks)
 # =============================================================================
 smtpd_tls_security_level = may
 smtpd_tls_cert_file = /certs/smtp.crt

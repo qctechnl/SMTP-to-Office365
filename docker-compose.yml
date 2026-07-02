@@ -28,17 +28,22 @@ services:
       SMTP_TLS_LEVEL:         ${SMTP_TLS_LEVEL:-may}
       SUBMISSION_TLS_LEVEL:   ${SUBMISSION_TLS_LEVEL:-may}
 
+      # Inbound TLS certificate (encrypts SMTP connections from local applications)
+      SMTP_TLS_CERT_PATH:     ${SMTP_TLS_CERT_PATH:-/certs/smtp.crt}
+      SMTP_TLS_KEY_PATH:      ${SMTP_TLS_KEY_PATH:-/certs/smtp.key}
+
       # OAuth2
-      OAUTH2_TENANT_ID:       ${OAUTH2_TENANT_ID}
-      OAUTH2_CLIENT_ID:       ${OAUTH2_CLIENT_ID}
-      OAUTH2_AUTH_TYPE:       ${OAUTH2_AUTH_TYPE}
+      ENTRA_TENANT_ID:       ${ENTRA_TENANT_ID}
+      ENTRA_CLIENT_ID:       ${ENTRA_CLIENT_ID}
+      ENTRA_AUTH_TYPE:       ${ENTRA_AUTH_TYPE}
 
-      # OAuth2 - only required when OAUTH2_AUTH_TYPE=secret
-      OAUTH2_CLIENT_SECRET:   ${OAUTH2_CLIENT_SECRET:-}
+      # OAuth2 - only required when ENTRA_AUTH_TYPE=secret
+      ENTRA_CLIENT_SECRET:   ${ENTRA_CLIENT_SECRET:-}
 
-      # OAuth2 - only required when OAUTH2_AUTH_TYPE=certificate
-      OAUTH2_CERT_PATH:       ${OAUTH2_CERT_PATH:-/certs/smtp.crt}
-      OAUTH2_KEY_PATH:        ${OAUTH2_KEY_PATH:-/certs/smtp.key}
+      # OAuth2 - only required when ENTRA_AUTH_TYPE=certificate
+      # (Entra ID client certificate — distinct from the inbound SMTP TLS certificate)
+      ENTRA_CERT_PATH:       ${ENTRA_CERT_PATH:-}
+      ENTRA_KEY_PATH:        ${ENTRA_KEY_PATH:-}
 
       # Graph delivery options
       GRAPH_SAVE_TO_SENT_ITEMS:  ${GRAPH_SAVE_TO_SENT_ITEMS:-false}
@@ -48,7 +53,7 @@ services:
     # Volumes
     # =========================================================================
     volumes:
-      # Certificate and private key (bind mount from host)
+      # Certificates: inbound SMTP TLS + Entra ID client cert (bind mount from host)
       - ${CERTS_DIR:-./certs}:/certs:ro
 
       # SASL user database (manage with manage-users.sh)

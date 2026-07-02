@@ -71,19 +71,19 @@ def log_error(msg: str) -> None:
 # =============================================================================
 
 def _build_msal_app() -> Optional[msal.ConfidentialClientApplication]:
-    client_id = os.environ["OAUTH2_CLIENT_ID"]
-    authority = f"https://login.microsoftonline.com/{os.environ['OAUTH2_TENANT_ID']}"
-    auth_type = os.environ["OAUTH2_AUTH_TYPE"]
+    client_id = os.environ["ENTRA_CLIENT_ID"]
+    authority = f"https://login.microsoftonline.com/{os.environ['ENTRA_TENANT_ID']}"
+    auth_type = os.environ["ENTRA_AUTH_TYPE"]
     if auth_type == "certificate":
-        with open(os.environ["OAUTH2_CERT_PATH"]) as fh:
+        with open(os.environ["ENTRA_CERT_PATH"]) as fh:
             cert_data = fh.read()
-        with open(os.environ["OAUTH2_KEY_PATH"]) as fh:
+        with open(os.environ["ENTRA_KEY_PATH"]) as fh:
             key_data = fh.read()
         credential = {"private_key": key_data, "thumbprint": None, "public_certificate": cert_data}
     elif auth_type == "secret":
-        credential = os.environ["OAUTH2_CLIENT_SECRET"]
+        credential = os.environ["ENTRA_CLIENT_SECRET"]
     else:
-        log_error(f"unknown OAUTH2_AUTH_TYPE: {auth_type}")
+        log_error(f"unknown ENTRA_AUTH_TYPE: {auth_type}")
         return None
     return msal.ConfidentialClientApplication(client_id, authority=authority, client_credential=credential)
 

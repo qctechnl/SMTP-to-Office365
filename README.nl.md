@@ -18,8 +18,8 @@ Lokale applicaties
 ┌─────────────────────┐
 │  Postfix container  │
 │                     │
-│  graph-send.py      │──── token.json (elke 45 min ververst)
-│  get-oauth2-token   │──── Entra ID (MSAL, client credentials)
+│  graph-send.py      │──── Entra ID (MSAL, client credentials flow)
+│                     │──── token.json (gecached, ververst bij verlopen)
 └─────────────────────┘
       │
       │  HTTPS
@@ -80,8 +80,8 @@ Genereer een certificaat als u er nog geen heeft:
 
 ```bash
 openssl req -x509 -newkey rsa:4096 \
-    -keyout ./certs/smtp.key \
-    -out ./certs/smtp.crt \
+    -keyout ./certs/entra.key \
+    -out ./certs/entra.crt \
     -days 3650 -nodes \
     -subj "/CN=smtp-relay"
 ```
@@ -89,14 +89,14 @@ openssl req -x509 -newkey rsa:4096 \
 Upload het publieke certificaat naar Entra ID:
 
 1. Ga naar de App Registration → **Certificates & secrets** → **Certificates**
-2. Klik op **Upload certificate** en selecteer `smtp.crt`
+2. Klik op **Upload certificate** en selecteer `entra.crt`
 3. Noteer de getoonde thumbprint (ter referentie; MSAL leest deze automatisch)
 
 Stel in `.env` in:
 ```env
-OAUTH2_AUTH_TYPE=certificate
-OAUTH2_CERT_PATH=/certs/smtp.crt
-OAUTH2_KEY_PATH=/certs/smtp.key
+ENTRA_AUTH_TYPE=certificate
+ENTRA_CERT_PATH=/certs/entra.crt
+ENTRA_KEY_PATH=/certs/entra.key
 ```
 
 ### 3b. Client secret authenticatie
@@ -107,8 +107,8 @@ OAUTH2_KEY_PATH=/certs/smtp.key
 
 Stel in `.env` in:
 ```env
-OAUTH2_AUTH_TYPE=secret
-OAUTH2_CLIENT_SECRET=uw-secret-waarde-hier
+ENTRA_AUTH_TYPE=secret
+ENTRA_CLIENT_SECRET=uw-secret-waarde-hier
 ```
 
 ### 4. Graph-rechten scopeten in Exchange Online
@@ -151,9 +151,14 @@ Remove-ApplicationAccessPolicy -Identity <policy-id>
 
 ## TLS-certificaat voor inkomende verbindingen
 
-Voor TLS op inkomende verbindingen (poort 25/587) verwacht de container een certificaat op de paden ingesteld via `OAUTH2_CERT_PATH` en `OAUTH2_KEY_PATH` — of u kunt het Entra ID-certificaat hergebruiken.
+Deze relay gebruikt twee afzonderlijke certificaten met totaal verschillende doelen:
 
-Voor een zelfondertekend inbound certificaat:
+| Variabele | Doel |
+|---|---|
+| `SMTP_TLS_CERT_PATH` / `SMTP_TLS_KEY_PATH` | Versleutelt **inkomende** SMTP-verbindingen van lokale applicaties naar deze relay |
+| `ENTRA_CERT_PATH` / `ENTRA_KEY_PATH` | Authenticeert deze relay **uitgaand** bij Microsoft Entra ID (alleen bij `ENTRA_AUTH_TYPE=certificate`) |
+
+Genereer een zelfondertekend certificaat voor inkomende TLS:
 
 ```bash
 mkdir -p ./certs
@@ -163,6 +168,8 @@ openssl req -x509 -newkey rsa:4096 \
     -days 3650 -nodes \
     -subj "/CN=mail.example.com"
 ```
+
+Beide certificaten worden in `CERTS_DIR` geplaatst (gemount als `/certs` in de container). Ze kunnen naar hetzelfde bestand wijzen, maar gebruiken standaard aparte paden (`smtp.crt`/`smtp.key` voor inkomende TLS, `entra.crt`/`entra.key` voor Entra ID-authenticatie).
 
 ---
 
@@ -180,9 +187,9 @@ Bewerk `.env` — stel minimaal in:
 RELAY_HOSTNAME=mail.example.com
 RELAY_ALLOWED_NETWORKS=10.0.0.0/8
 RELAY_FROM_ADDRESSES=relay@example.com
-OAUTH2_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-OAUTH2_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-OAUTH2_AUTH_TYPE=certificate
+ENTRA_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ENTRA_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ENTRA_AUTH_TYPE=certificate
 ```
 
 **2. Bouwen en starten:**
@@ -232,18 +239,20 @@ docker exec -it postfix-relay manage-users.sh delete jan example.com
 | `RELAY_HOSTNAME` | ja | — | Hostnaam in SMTP EHLO/HELO |
 | `RELAY_ALLOWED_NETWORKS` | ja | — | Netwerken die mogen relayeren zonder authenticatie (spatie-gescheiden CIDR) |
 | `RELAY_FROM_ADDRESSES` | ja | — | Spatie-gescheiden lijst van specifieke mailboxadressen die mogen relayeren (geen domeinwildcards). Elk adres moet lid zijn van de Application Access Policy-scopegroep in Exchange Online. |
-| `OAUTH2_TENANT_ID` | ja | — | Entra ID tenant ID |
-| `OAUTH2_CLIENT_ID` | ja | — | Client ID van de app registration |
-| `OAUTH2_AUTH_TYPE` | ja | — | `certificate` of `secret` |
-| `OAUTH2_CERT_PATH` | bij certificate | `/certs/smtp.crt` | Pad naar certificaat in de container |
-| `OAUTH2_KEY_PATH` | bij certificate | `/certs/smtp.key` | Pad naar privésleutel in de container |
-| `OAUTH2_CLIENT_SECRET` | bij secret | — | Waarde van het client secret |
+| `ENTRA_TENANT_ID` | ja | — | Entra ID tenant ID |
+| `ENTRA_CLIENT_ID` | ja | — | Client ID van de app registration |
+| `ENTRA_AUTH_TYPE` | ja | — | `certificate` of `secret` |
+| `ENTRA_CERT_PATH` | bij certificate | — | Pad in de container naar het Entra ID-clientcertificaat (niet het inbound TLS-certificaat) |
+| `ENTRA_KEY_PATH` | bij certificate | — | Pad in de container naar de Entra ID-privésleutel |
+| `ENTRA_CLIENT_SECRET` | bij secret | — | Waarde van het client secret |
 | `LISTEN_ADDRESS` | nee | `0.0.0.0` | Host-IP om op te binden |
 | `SMTP_PORT` | nee | `25` | Host-poort gekoppeld aan containerpoort 25 |
 | `SUBMISSION_PORT` | nee | `587` | Host-poort gekoppeld aan containerpoort 587 |
 | `SMTP_TLS_LEVEL` | nee | `may` | Inbound TLS op poort 25: `none`, `may`, `encrypt` |
 | `SUBMISSION_TLS_LEVEL` | nee | `may` | Inbound TLS op poort 587: `none`, `may`, `encrypt` |
-| `CERTS_DIR` | nee | `./certs` | Hostmap met `smtp.crt` en `smtp.key` |
+| `SMTP_TLS_CERT_PATH` | nee | `/certs/smtp.crt` | Pad in de container naar het inbound SMTP TLS-certificaat |
+| `SMTP_TLS_KEY_PATH` | nee | `/certs/smtp.key` | Pad in de container naar de inbound SMTP TLS-privésleutel |
+| `CERTS_DIR` | nee | `./certs` | Hostmap gemount als `/certs`; plaats hier zowel het inbound TLS-certificaat als (indien van toepassing) het Entra ID-certificaat |
 | `SASLDB_DIR` | nee | `./sasldb` | Hostmap voor de sasldb2-gebruikersdatabase |
 | `LOG_LEVEL` | nee | `info` | Logverbositeit: `error` (alleen fouten), `info` (inbound TLS-samenvattingen + één regel per afgeleverd bericht), `debug` (volledige inbound TLS + Graph API-request/response-logging), `verbose` (als debug + access token gelogd bij elke tokenophaling — niet gebruiken in productie) |
 | `GRAPH_SAVE_TO_SENT_ITEMS` | nee | `false` | Of relay-mail in de map Verzonden items verschijnt van de afzendermailbox in Office 365. Zet op `true` voor een audit-trail zichtbaar in Outlook/OWA. |
@@ -254,10 +263,10 @@ docker exec -it postfix-relay manage-users.sh delete jan example.com
 ## Beveiligingspunten
 
 - **SASL over plaintext is geblokkeerd** — `smtpd_sasl_security_options = noanonymous, noplaintext` voorkomt PLAIN/LOGIN zonder TLS. Gebruik `SUBMISSION_TLS_LEVEL=encrypt` op poort 587 om TLS end-to-end te verplichten.
-- **Tokenbestandpermissies** — `token.json` wordt geschreven als `root:postfix 640`, leesbaar alleen door root en de groep `postfix`. Het bestand wordt opgeslagen in het `postfix-queue` volume. De access token wordt door `graph-send.py` nooit in logs geschreven; `get-oauth2-token.py` logt de token alleen bij `LOG_LEVEL=verbose`.
+- **Tokenbestandpermissies** — `token.json` wordt geschreven met mode `600`, eigendom van `graph-send:graph-send`. Het bestand wordt opgeslagen in het `postfix-queue` volume en is uitsluitend leesbaar door de pipe transport-gebruiker. De access token wordt nooit in logs geschreven; `graph-send.py` logt de token uitsluitend bij `LOG_LEVEL=verbose` met een expliciete waarschuwing.
 - **Netwerkbeperking** — poort 25 staat alleen `mynetworks` toe. Geauthenticeerde clients kunnen bovendien via poort 587 relayeren.
 - **Beperk de Entra ID-app** — `Mail.Send` en `Mail.ReadWrite` worden via de Application Access Policy (stap 4) beperkt tot specifieke mailboxen. Voeg geen mailboxen toe aan de scopegroep die de relay niet nodig heeft. `Mail.ReadWrite` geeft leestoegang tot de mailinhoud van gescopete mailboxen (nodig voor de grote-bijlage-flow) — houd `RELAY_FROM_ADDRESSES` beperkt tot adressen die daadwerkelijk voor verzenden worden gebruikt.
-- **Roteer certificaten en secrets** — stel een herinnering in vóór het verlopen van `OAUTH2_AUTH_TYPE=certificate`-certificaten (`-days 3650` = 10 jaar voor zelfondertekend). Client secrets verlopen op het schema ingesteld in Entra ID.
+- **Roteer certificaten en secrets** — stel een herinnering in vóór het verlopen van `ENTRA_AUTH_TYPE=certificate`-certificaten (`-days 3650` = 10 jaar voor zelfondertekend). Client secrets verlopen op het schema ingesteld in Entra ID.
 
 ---
 
