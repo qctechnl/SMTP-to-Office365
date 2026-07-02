@@ -6,6 +6,8 @@
 
 A containerised Postfix SMTP relay that forwards mail to Office 365 via OAuth2 (client credentials flow). Inbound connections are accepted on port 25 and 587 with optional TLS and SASL authentication.
 
+**Intended use:** letting legacy systems and appliances (that only speak plain SMTP) send notifications and alerts securely through Entra ID, on behalf of a small, explicitly listed set of sender mailboxes. It is deliberately **not** a general-purpose relay for the whole organisation — access is scoped to the mailboxes in `RELAY_FROM_ADDRESSES`, enforced both at the SMTP layer and by RBAC for Applications in Exchange Online (see step 4).
+
 > Dutch documentation: [README.nl.md](README.nl.md)
 
 ---
