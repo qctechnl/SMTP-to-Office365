@@ -17,7 +17,7 @@ Lokale applicaties
       │
       │  SMTP (poort 25 / 587)
       │  TLS: optioneel of verplicht (instelbaar)
-      │  Auth: netwerktrust of SASL (sasldb2)
+      │  Auth: Geauthenticeerd of afkomstig van toegestaan netwerk (ongeauthenticeerd)
       ▼
 ┌─────────────────────┐
 │  Postfix container  │

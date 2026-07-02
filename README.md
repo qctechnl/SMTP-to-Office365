@@ -17,7 +17,7 @@ Local applications
       │
       │  SMTP (port 25 / 587)
       │  TLS: optional or mandatory (configurable)
-      │  Auth: network trust or SASL (sasldb2)
+      │  Auth: Authenticated or from allowed network (unauthenticated)
       ▼
 ┌─────────────────────┐
 │   Postfix container │
