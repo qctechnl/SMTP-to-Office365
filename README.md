@@ -195,7 +195,8 @@ RELAY_ALLOWED_NETWORKS=10.0.0.0/8
 RELAY_FROM_ADDRESSES=relay@example.com
 ENTRA_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ENTRA_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-ENTRA_AUTH_TYPE=certificate
+ENTRA_AUTH_TYPE=secret
+ENTRA_CLIENT_SECRET=your-secret-value-here
 ```
 
 **2. Build and start:**
@@ -208,13 +209,13 @@ docker compose up -d --build
 
 ```bash
 # Check container logs
-docker logs postfix-relay
+docker logs smtp-to-office365
 
 # Test SMTP connectivity
 echo "Test mail" | mail -s "Test" -S smtp=smtp://localhost:25 recipient@example.com
 
 # Check mail queue
-docker exec postfix-relay mailq
+docker exec smtp-to-office365 mailq
 ```
 
 ---
@@ -225,13 +226,13 @@ The relay optionally accepts authenticated SMTP connections on port 587 using a 
 
 ```bash
 # Add or update a user (prompts for password)
-docker exec -it postfix-relay manage-users.sh add john example.com
+docker exec -it smtp-to-office365 manage-users.sh add john example.com
 
 # List all users
-docker exec -it postfix-relay manage-users.sh list
+docker exec -it smtp-to-office365 manage-users.sh list
 
 # Delete a user
-docker exec -it postfix-relay manage-users.sh delete john example.com
+docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 ```
 
 > SASL authentication over plaintext is blocked by default. Set `SUBMISSION_TLS_LEVEL=encrypt` in `.env` to enforce TLS before allowing SASL on port 587.
