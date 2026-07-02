@@ -139,8 +139,8 @@ def _map_status(status: int, body: str) -> int:
     if status == 401:
         return _EX_REAUTH
     if status == 403:
-        log_error(f"403 Forbidden — check Application Access Policy membership: {body[:300]}")
-        return EX_NOPERM
+        log_error(f"403 Forbidden — check Application Access Policy membership (will retry): {body[:300]}")
+        return EX_TEMPFAIL
     if status == 404:
         log_error(f"404 Not Found — mailbox or resource does not exist: {body[:300]}")
         return EX_NOUSER
@@ -372,6 +372,12 @@ def main() -> None:
     args = parser.parse_args()
 
     raw = sys.stdin.buffer.read()
+
+    # Bounce notifications (envelope sender is empty / MAILER-DAEMON) cannot be
+    # delivered via Graph API — discard silently so Postfix does not retry.
+    if "@" not in args.sender:
+        log_info(f"discarding bounce notification (sender={args.sender!r})")
+        sys.exit(EX_OK)
 
     token = read_token()
     if token is None:
