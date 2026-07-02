@@ -55,28 +55,18 @@ Microsoft Graph sendMail API
 
 Note the **Application (client) ID** and **Directory (tenant) ID** — you will need both.
 
-### 2. Add API permissions
+### 2. API permissions — do **not** consent to Graph permissions in Entra ID
 
-The required permissions depend on the `GRAPH_LARGE_ATTACHMENTS` setting (see configuration reference):
+This relay grants its Graph permissions through **RBAC for Applications** in Exchange Online (step 4), scoped to specific mailboxes. That mechanism grants the permission itself — you do **not** need to add or consent to any Microsoft Graph application permission on the App Registration.
 
-**`GRAPH_LARGE_ATTACHMENTS=false` — simple path, Mail.Send only:**
+> **Do not** grant tenant-wide admin consent for `Mail.Send` or `Mail.ReadWrite` in Entra ID. Entra ID consent and Exchange RBAC are **additive** (a union), so a tenant-wide consent would bypass the RBAC scoping and give the app access to every mailbox. Leave the App Registration's **API permissions** empty and rely entirely on the scoped RBAC assignment in step 4.
 
-1. Go to **API permissions** → **Add a permission**
-2. Choose **Microsoft Graph** → **Application permissions**
-3. Add: `Mail.Send`
-4. Click **Grant admin consent for [your organisation]** and confirm
+The Graph permissions the RBAC role must cover depend on the `GRAPH_LARGE_ATTACHMENTS` setting (see configuration reference), which maps to the role you assign in step 4:
 
-**`GRAPH_LARGE_ATTACHMENTS=true` (default) — large attachment support, both permissions required:**
+- **`GRAPH_LARGE_ATTACHMENTS=false`** — simple `sendMail` path, needs `Mail.Send` only → role `Application Mail.Send`
+- **`GRAPH_LARGE_ATTACHMENTS=true`** (default) — large-attachment support, needs `Mail.Send` **and** `Mail.ReadWrite` → role `Application Mail Full Access`
 
-1. Go to **API permissions** → **Add a permission**
-2. Choose **Microsoft Graph** → **Application permissions**
-3. Add both:
-   - `Mail.Send` — permission to send mail as any mailbox in the Application Access Policy scope group
-   - `Mail.ReadWrite` — required for the draft + chunked upload flow used for attachments > 3 MB
-4. Click **Add permissions**
-5. Click **Grant admin consent for [your organisation]** and confirm
-
-> `Mail.ReadWrite` is needed because large attachments are sent by first creating a draft message, uploading the attachment in chunks via an upload session, and then sending the draft — operations that require read/write access to the mailbox. Both permissions are scoped to specific mailboxes via an Application Access Policy (step 4), so they do not grant access to the entire tenant.
+> `Mail.ReadWrite` is needed for large attachments because they are sent by first creating a draft message, uploading the attachment in chunks via an upload session, and then sending the draft — operations that require read/write access to the mailbox.
 
 ### 3a. Certificate authentication (recommended)
 
@@ -115,11 +105,14 @@ ENTRA_AUTH_TYPE=secret
 ENTRA_CLIENT_SECRET=your-secret-value-here
 ```
 
-### 4. Scope the app's Graph permissions in Exchange Online
+### 4. Grant scoped Graph permissions with RBAC for Applications
 
-The Graph permissions granted in step 2 are tenant-wide by default. Use an **Application Access Policy** in Exchange Online to restrict them to only the mailboxes in `RELAY_FROM_ADDRESSES`.
+Use **RBAC for Applications** in Exchange Online to grant the app a Graph permission scoped to only the mailboxes in `RELAY_FROM_ADDRESSES`. This replaces the deprecated `New-ApplicationAccessPolicy` mechanism — the RBAC role grants the permission itself, so nothing is consented tenant-wide in Entra ID.
 
-You need the **Application (client) ID** from the App Registration overview in Entra ID.
+You need two IDs from **Entra ID → Enterprise applications** (open your app there, not the App registrations page — the App registrations page shows different values):
+
+- **Application ID** — the client ID
+- **Object ID** — the enterprise application (service principal) object ID
 
 Run the following in **Exchange Online PowerShell**:
 
@@ -128,33 +121,55 @@ Connect-ExchangeOnline
 
 $appId = "<application-client-id>"
 
-# Create a mail-enabled security group containing exactly the mailboxes in RELAY_FROM_ADDRESSES
-New-DistributionGroup -Name "SMTP Relay Mailboxes" -Type Security -Members relay@example.com, noreply@example.com
+# 1. Create an Exchange service principal that points to the app's enterprise application.
+#    Object ID comes from Entra ID > Enterprise applications (NOT the App registrations page).
+New-ServicePrincipal -AppId $appId -ObjectId "<enterprise-app-object-id>" -DisplayName "SMTP Relay"
 
-# Restrict the app's Graph permissions to that group only
-New-ApplicationAccessPolicy -AppId $appId -PolicyScopeGroupId "SMTP Relay Mailboxes" -AccessRight RestrictAccess -Description "SMTP relay - Graph Mail.Send/Mail.ReadWrite"
+# 2. Create a mail-enabled security group containing exactly the mailboxes in RELAY_FROM_ADDRESSES.
+$group = New-DistributionGroup -Name "SMTP Relay Mailboxes" -Type Security -Members relay@example.com, noreply@example.com
 
-# Verify
-Test-ApplicationAccessPolicy -AppId $appId -Identity relay@example.com    # should return Passed
-Test-ApplicationAccessPolicy -AppId $appId -Identity other@example.com    # should return Failed
+# 3. Create a management scope restricted to DIRECT members of that group.
+#    MemberOfGroup requires the group's distinguished name (nested groups are out of scope).
+New-ManagementScope -Name "SMTP Relay Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"
+
+# 4. Assign the scoped application role.
+#    GRAPH_LARGE_ATTACHMENTS=true (default) -> "Application Mail Full Access" (Mail.Send + Mail.ReadWrite)
+#    GRAPH_LARGE_ATTACHMENTS=false           -> "Application Mail.Send"
+New-ManagementRoleAssignment -App $appId -Role "Application Mail Full Access" -CustomResourceScope "SMTP Relay Scope"
+
+# 5. Verify (the test cmdlet bypasses the permission cache).
+Test-ServicePrincipalAuthorization -Identity $appId -Resource relay@example.com | Format-Table   # InScope should be True
+Test-ServicePrincipalAuthorization -Identity $appId -Resource other@example.com  | Format-Table   # InScope should be False
 ```
 
 To add a mailbox later: `Add-DistributionGroupMember -Identity "SMTP Relay Mailboxes" -Member newaddress@example.com`
 
-**To revoke all access:**
+> **Propagation:** RBAC changes take effect after a cache refresh of 30 minutes to 2 hours. `Test-ServicePrincipalAuthorization` bypasses that cache, so use it to confirm the configuration immediately rather than waiting for a live send to succeed.
 
-> **Warning:** Removing the Application Access Policy alone does **not** revoke access — it removes the scope restriction, giving the app access to **all mailboxes** in the tenant. Always remove the API permissions in Entra ID as well.
+**Migrating from an old Application Access Policy?**
 
-1. Remove the policy (Exchange Online PowerShell):
+If this app previously used `New-ApplicationAccessPolicy`, complete the RBAC steps above, then clean up the legacy configuration — this also resolves the `[RAOP] Blocked by tenant configured AppOnly AccessPolicy` (HTTP 403) error:
+
 ```powershell
-# Find the policy ID
+# Remove any tenant-wide Graph consent in Entra ID first (App Registration > API permissions),
+# then remove the old policy:
 Get-ApplicationAccessPolicy | Where-Object { $_.AppId -eq $appId } | Format-List
-
 Remove-ApplicationAccessPolicy -Identity <policy-id>
 ```
 
-2. Remove the API permissions in Entra ID:  
-   Go to the App Registration → **API permissions** → remove `Mail.Send` and `Mail.ReadWrite`
+**To revoke all access:**
+
+Because no tenant-wide Graph permission is consented in Entra ID, removing the RBAC role assignment fully revokes the app's access:
+
+```powershell
+# Find the assignment name, then remove it
+Get-ManagementRoleAssignment -RoleAssignee $appId
+Remove-ManagementRoleAssignment -Identity "<assignment-name>"
+
+# Optionally remove the service principal pointer and the scope as well
+Remove-ServicePrincipal -Identity $appId
+Remove-ManagementScope -Identity "SMTP Relay Scope"
+```
 
 ---
 
@@ -250,7 +265,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 |---|---|---|---|
 | `RELAY_HOSTNAME` | yes | — | Hostname used in SMTP EHLO/HELO |
 | `RELAY_ALLOWED_NETWORKS` | yes | — | Networks allowed to relay without auth (space-separated CIDR) |
-| `RELAY_FROM_ADDRESSES` | yes | — | Space-separated list of specific mailbox addresses allowed to relay (no domain wildcards). Each must be a member of the Application Access Policy scope group in Exchange Online. |
+| `RELAY_FROM_ADDRESSES` | yes | — | Space-separated list of specific mailbox addresses allowed to relay (no domain wildcards). Each must be a member of the RBAC management scope group in Exchange Online (step 4). |
 | `ENTRA_TENANT_ID` | yes | — | Entra ID tenant ID |
 | `ENTRA_CLIENT_ID` | yes | — | App registration client ID |
 | `ENTRA_AUTH_TYPE` | yes | — | `certificate` or `secret` |
@@ -277,7 +292,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 - **SASL over plaintext is blocked** — `smtpd_sasl_security_options = noanonymous, noplaintext` prevents PLAIN/LOGIN without TLS. Use `SUBMISSION_TLS_LEVEL=encrypt` on port 587 to enforce TLS end-to-end.
 - **Token file permissions** — `token.json` is written with mode `600`, owned by `graph-send:graph-send`. It is stored inside the `postfix-queue` volume and readable only by the pipe transport user. The access token is never written to logs; `graph-send.py` logs it only at `LOG_LEVEL=verbose` with an explicit warning.
 - **Network restriction** — port 25 only permits `mynetworks`. Authenticated clients can additionally relay via port 587.
-- **Restrict the Entra ID app** — `Mail.Send` and `Mail.ReadWrite` are scoped to specific mailboxes via the Application Access Policy (step 4). Do not add mailboxes to the scope group that the relay does not need. Note that `Mail.ReadWrite` allows reading mail content of scoped mailboxes (needed for the large-attachment draft flow) — keep `RELAY_FROM_ADDRESSES` limited to addresses actually used for sending.
+- **Restrict the Entra ID app** — the app's Graph permissions are granted scoped to specific mailboxes via RBAC for Applications (`Application Mail Full Access` / `Application Mail.Send`, step 4), not via a tenant-wide Entra ID consent. Do not add mailboxes to the scope group that the relay does not need. Note that `Mail.ReadWrite` (part of `Application Mail Full Access`) allows reading mail content of scoped mailboxes (needed for the large-attachment draft flow) — keep `RELAY_FROM_ADDRESSES` limited to addresses actually used for sending, or use `GRAPH_LARGE_ATTACHMENTS=false` with the send-only `Application Mail.Send` role.
 - **Rotate certificates and secrets** — set a calendar reminder before `ENTRA_AUTH_TYPE=certificate` certificates expire (`-days 3650` = 10 years for self-signed). Client secrets expire on the schedule set in Entra ID.
 
 ---
