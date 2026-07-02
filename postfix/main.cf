@@ -43,6 +43,12 @@ smtpd_tls_key_file = /certs/smtp.key
 smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
 
+# Stronger requirements for enforced TLS (only applied when *_TLS_LEVEL=encrypt;
+# opportunistic TLS on port 25 stays unaffected so legacy clients keep working).
+smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtpd_tls_mandatory_ciphers = high
+tls_preempt_cipherlist = yes
+
 # =============================================================================
 # Inbound SASL authentication (from local applications via sasldb2)
 # =============================================================================
