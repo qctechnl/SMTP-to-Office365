@@ -141,6 +141,20 @@ mkdir -p "${TOKEN_DIR}"
 chown graph-send:graph-send "${TOKEN_DIR}"
 chmod 700 "${TOKEN_DIR}"
 
+# When using certificate auth, copy the cert/key into the token directory so
+# graph-send can read them (the /certs mount uses host file permissions which
+# may not be readable by the graph-send user). Update the env vars so Postfix
+# picks up the new paths before starting.
+if [[ "${ENTRA_AUTH_TYPE}" == "certificate" ]]; then
+    cp "${ENTRA_CERT_PATH}" "${TOKEN_DIR}/entra.crt"
+    cp "${ENTRA_KEY_PATH}"  "${TOKEN_DIR}/entra.key"
+    chown graph-send:graph-send "${TOKEN_DIR}/entra.crt" "${TOKEN_DIR}/entra.key"
+    chmod 644 "${TOKEN_DIR}/entra.crt"
+    chmod 600 "${TOKEN_DIR}/entra.key"
+    export ENTRA_CERT_PATH="${TOKEN_DIR}/entra.crt"
+    export ENTRA_KEY_PATH="${TOKEN_DIR}/entra.key"
+fi
+
 # =============================================================================
 # Start Postfix
 # =============================================================================
