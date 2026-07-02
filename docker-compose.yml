@@ -1,9 +1,9 @@
 services:
-  postfix-relay:
+  smtp-to-office365:
     image: qctechnl/smtp-to-office365:latest
     build:
       context: .
-    container_name: postfix-relay
+    container_name: smtp-to-office365
     restart: unless-stopped
 
     # =========================================================================
