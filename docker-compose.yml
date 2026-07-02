@@ -1,5 +1,6 @@
 services:
   postfix-relay:
+    image: qctechnl/smtp-to-office365:latest
     build:
       context: .
     container_name: postfix-relay

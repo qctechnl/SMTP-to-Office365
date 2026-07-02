@@ -1,5 +1,9 @@
 # SMTP Relay voor Office 365
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/qctechnl/smtp-to-office365)](https://hub.docker.com/r/qctechnl/smtp-to-office365)
+[![Docker Image Version](https://img.shields.io/docker/v/qctechnl/smtp-to-office365?sort=semver)](https://hub.docker.com/r/qctechnl/smtp-to-office365/tags)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Een gecontaineriseerde Postfix SMTP relay die mail doorstuurt naar Office 365 via OAuth2 (client credentials flow). Inkomende verbindingen worden geaccepteerd op poort 25 en 587 met optionele TLS en SASL-authenticatie.
 
 > Engelse documentatie: [README.md](README.md)
@@ -180,6 +184,8 @@ Beide certificaten worden in `CERTS_DIR` geplaatst (gemount als `/certs` in de c
 ```bash
 cp .env.example .env
 ```
+
+> Het image staat op Docker Hub — `docker compose up -d` downloadt het automatisch. Lokaal bouwen kan met `docker compose up -d --build`.
 
 Bewerk `.env` — stel minimaal in:
 

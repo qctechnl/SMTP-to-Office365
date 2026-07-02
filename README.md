@@ -1,5 +1,9 @@
 # SMTP Relay for Office 365
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/qctechnl/smtp-to-office365)](https://hub.docker.com/r/qctechnl/smtp-to-office365)
+[![Docker Image Version](https://img.shields.io/docker/v/qctechnl/smtp-to-office365?sort=semver)](https://hub.docker.com/r/qctechnl/smtp-to-office365/tags)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A containerised Postfix SMTP relay that forwards mail to Office 365 via OAuth2 (client credentials flow). Inbound connections are accepted on port 25 and 587 with optional TLS and SASL authentication.
 
 > Dutch documentation: [README.nl.md](README.nl.md)
@@ -180,6 +184,8 @@ Both certificates are placed in `CERTS_DIR` (mounted as `/certs` in the containe
 ```bash
 cp .env.example .env
 ```
+
+> The image is available on Docker Hub — `docker compose up -d` pulls it automatically. To build locally instead, run `docker compose up -d --build`.
 
 Edit `.env` — at minimum set:
 

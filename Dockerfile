@@ -1,10 +1,11 @@
 FROM debian:12-slim
 
 LABEL org.opencontainers.image.title="SMTP Relay for Office 365" \
-      org.opencontainers.image.description="Postfix SMTP relay with OAuth2 authentication via Microsoft Graph for Office 365 via Microsoft Entra ID" \
+      org.opencontainers.image.description="Postfix SMTP relay for Office 365 — delivers via Microsoft Graph API using Entra ID client credentials" \
       org.opencontainers.image.authors="Mark Bartelen <info@qctech.nl>" \
       org.opencontainers.image.vendor="QC Tech" \
       org.opencontainers.image.url="https://qctech.nl" \
+      org.opencontainers.image.source="https://github.com/qctechnl/SMTP-to-Office365" \
       org.opencontainers.image.licenses="MIT"
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
