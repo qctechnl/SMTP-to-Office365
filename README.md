@@ -196,8 +196,13 @@ openssl req -x509 -newkey rsa:4096 \
     -keyout ./certs/smtp.key \
     -out ./certs/smtp.crt \
     -days 3650 -nodes \
-    -subj "/CN=mail.example.com"
+    -subj "/CN=mail.example.com" \
+    -addext "subjectAltName=DNS:mail.example.com"
 ```
+
+> **The Subject Alternative Name (SAN) must match how sending systems actually reach this relay.** Modern TLS stacks — including Windows Schannel/.NET, used by many legacy on-prem applications — validate the SAN and ignore the legacy CN field entirely. A certificate without a matching SAN is rejected with a `certificate_unknown` (TLS alert 46) or similar error, even after the certificate itself is trusted. Replace `mail.example.com` above with the actual hostname (or IP address) senders use. If a sender connects by IP instead of hostname, add an IP entry too: `-addext "subjectAltName=DNS:mail.example.com,IP:10.0.0.5"`.
+>
+> If the certificate is self-signed (not signed by a CA the sending system already trusts), it must also be imported into that system's trust store — e.g. the Windows "Trusted Root Certification Authorities" store — or the TLS handshake fails with an `unknown_ca` (TLS alert 48) error, regardless of the SAN.
 
 Both certificates are placed in `CERTS_DIR` (mounted as `/certs` in the container). They can point to the same file if desired, but by default use separate paths (`smtp.crt`/`smtp.key` for inbound TLS, `entra.crt`/`entra.key` for Entra ID auth).
 

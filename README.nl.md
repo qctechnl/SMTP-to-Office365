@@ -196,8 +196,13 @@ openssl req -x509 -newkey rsa:4096 \
     -keyout ./certs/smtp.key \
     -out ./certs/smtp.crt \
     -days 3650 -nodes \
-    -subj "/CN=mail.example.com"
+    -subj "/CN=mail.example.com" \
+    -addext "subjectAltName=DNS:mail.example.com"
 ```
+
+> **De Subject Alternative Name (SAN) moet overeenkomen met hoe verzendende systemen deze relay daadwerkelijk benaderen.** Moderne TLS-stacks — waaronder Windows Schannel/.NET, gebruikt door veel legacy on-prem applicaties — valideren de SAN en negeren het verouderde CN-veld volledig. Een certificaat zonder overeenkomende SAN wordt geweigerd met een `certificate_unknown`-fout (TLS-alert 46) of vergelijkbaar, zelfs nadat het certificaat zelf al vertrouwd is. Vervang `mail.example.com` hierboven door de daadwerkelijke hostname (of het IP-adres) die afzenders gebruiken. Verbindt een afzender via IP in plaats van hostname, voeg dan ook een IP-vermelding toe: `-addext "subjectAltName=DNS:mail.example.com,IP:10.0.0.5"`.
+>
+> Is het certificaat zelfondertekend (niet ondertekend door een CA die het verzendende systeem al vertrouwt), dan moet het ook in de trust store van dat systeem worden geïmporteerd — bijv. de Windows-store "Trusted Root Certification Authorities" — anders mislukt de TLS-handshake met een `unknown_ca`-fout (TLS-alert 48), ongeacht de SAN.
 
 Beide certificaten worden in `CERTS_DIR` geplaatst (gemount als `/certs` in de container). Ze kunnen naar hetzelfde bestand wijzen, maar gebruiken standaard aparte paden (`smtp.crt`/`smtp.key` voor inkomende TLS, `entra.crt`/`entra.key` voor Entra ID-authenticatie).
 
