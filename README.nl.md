@@ -15,23 +15,27 @@ Een gecontaineriseerde Postfix SMTP relay die mail aflevert bij Office 365 via d
 ## Architectuur
 
 ```
-Lokale applicaties
+Lokale applicaties / legacy-systemen
       │
-      │  SMTP (poort 25 / 587)
-      │  TLS: optioneel of verplicht (instelbaar)
-      │  Auth: Geauthenticeerd of afkomstig van toegestaan netwerk (ongeauthenticeerd)
+      │  SMTP (poort 25 of 587)
+      │  Poort 25: ongeauthenticeerd, bron-IP moet in RELAY_ALLOWED_NETWORKS staan
+      │  Poort 587: SASL-geauthenticeerd
+      │  TLS: optioneel of verplicht per poort (instelbaar)
+      │  MAIL FROM moet één van RELAY_FROM_ADDRESSES zijn (anders geweigerd)
       ▼
-┌─────────────────────┐
-│  Postfix container  │
-│                     │
-│  graph-send.py      │──── Entra ID (MSAL, client credentials flow)
-│                     │──── token.json (gecached, ververst bij verlopen)
-└─────────────────────┘
+┌───────────────────────────┐
+│  smtp-to-office365        │
+│  (Postfix)                │
+│                           │
+│  graph-send.py            │──── Entra ID (MSAL, client credentials flow)
+│  (draait als graph-send)  │──── token.json (gecached, ververst bij verlopen)
+└───────────────────────────┘
       │
-      │  HTTPS
-      │  Auth: OAuth2 (Bearer token, client credentials)
+      │  HTTPS — Microsoft Graph sendMail API
+      │  Auth: OAuth2 Bearer token (client credentials)
       ▼
-Microsoft Graph sendMail API
+Mailboxen in RELAY_FROM_ADDRESSES
+(toegang verder gescopet via RBAC for Applications in Exchange Online)
 ```
 
 ---
@@ -257,6 +261,20 @@ docker exec -it smtp-to-office365 manage-users.sh list
 docker exec -it smtp-to-office365 manage-users.sh delete jan example.com
 ```
 
+**Commando's en parameters:**
+
+| Commando | Argumenten | Omschrijving |
+|---|---|---|
+| `add` | `<username> <domain>` | Maakt een nieuwe gebruiker aan of stelt het wachtwoord van een bestaande opnieuw in. Vraagt interactief om het wachtwoord (tweemaal invoeren; nooit via de commandoregel, dus het blijft uit je shell-historie). |
+| `delete` | `<username> <domain>` | Verwijdert een gebruiker uit de database. |
+| `list` | *(geen)* | Toont alle gebruikers in de database. |
+
+- **`<username>`** — de inlognaam (lokaal deel), bijv. `jan`.
+- **`<domain>`** — het SASL-realm, bijv. `example.com`. Gebruikersnaam en domein vormen samen de inloggegevens: de SMTP-client authenticeert als **`username@domain`** (bijv. `jan@example.com`), met het via `add` ingestelde wachtwoord.
+- De SASL-login staat **los van de envelope-afzender**. Een geauthenticeerde client mag verzenden als elk adres in `RELAY_FROM_ADDRESSES` (het `MAIL FROM`-adres wordt apart gevalideerd), dus `<domain>` hoeft niet gelijk te zijn aan het domein van de afzender — zie het puur als onderdeel van de accountnaam.
+- `-it` is vereist bij `add` zodat de interactieve wachtwoordprompt werkt; bij `list` en `delete` is het optioneel.
+- Wijzigingen zijn direct actief — geen herstart van de container nodig. De database blijft op de host bewaard via de `SASLDB_DIR` bind mount, dus gebruikers overleven het opnieuw aanmaken van de container.
+
 > SASL-authenticatie over plaintext is standaard geblokkeerd. Stel `SUBMISSION_TLS_LEVEL=encrypt` in in `.env` om TLS te verplichten vóór SASL op poort 587.
 
 ---
@@ -279,6 +297,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete jan example.com
 | `SUBMISSION_PORT` | nee | `587` | Host-poort gekoppeld aan containerpoort 587 |
 | `SMTP_TLS_LEVEL` | nee | `may` | Inbound TLS op poort 25: `none`, `may`, `encrypt` |
 | `SUBMISSION_TLS_LEVEL` | nee | `may` | Inbound TLS op poort 587: `none`, `may`, `encrypt` |
+| `SMTP_PEERNAME_LOOKUP` | nee | `yes` | Reverse-DNS-(PTR)-lookup van het IP-adres van de verbindende client. `no` voorkomt vertraging/mislukte verbindingen op netwerken zonder bruikbare DNS; heeft alleen invloed op de `Received:`-header en het mail log, niet op de toegangscontrole. |
 | `SMTP_TLS_CERT_PATH` | nee | `/certs/smtp.crt` | Pad in de container naar het inbound SMTP TLS-certificaat |
 | `SMTP_TLS_KEY_PATH` | nee | `/certs/smtp.key` | Pad in de container naar de inbound SMTP TLS-privésleutel |
 | `CERTS_DIR` | nee | `./certs` | Hostmap gemount als `/certs`; plaats hier zowel het inbound TLS-certificaat als (indien van toepassing) het Entra ID-certificaat |
@@ -294,6 +313,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete jan example.com
 - **SASL over plaintext is geblokkeerd** — `smtpd_sasl_security_options = noanonymous, noplaintext` voorkomt PLAIN/LOGIN zonder TLS. Gebruik `SUBMISSION_TLS_LEVEL=encrypt` op poort 587 om TLS end-to-end te verplichten.
 - **Tokenbestandpermissies** — `token.json` wordt geschreven met mode `600`, eigendom van `graph-send:graph-send`. Het bestand wordt opgeslagen in het `postfix-queue` volume en is uitsluitend leesbaar door de pipe transport-gebruiker. De access token wordt nooit in logs geschreven; `graph-send.py` logt de token uitsluitend bij `LOG_LEVEL=verbose` met een expliciete waarschuwing.
 - **Netwerkbeperking** — poort 25 staat alleen `mynetworks` toe. Geauthenticeerde clients kunnen bovendien via poort 587 relayeren.
+- **Reverse-DNS-lookups** — standaard ingeschakeld (`SMTP_PEERNAME_LOOKUP=yes`, standaardgedrag van Postfix). Geen van de restricties in deze configuratie is afhankelijk van de clienthostname, dus dit heeft alleen invloed op de `Received:`-header en het mail log, niet op de toegangscontrole. Zet `SMTP_PEERNAME_LOOKUP=no` als legacy/geïsoleerde afzenders op netwerken zonder bruikbare DNS verbindingen laten vastlopen of mislukken door deze lookup.
 - **Beperk de Entra ID-app** — de Graph-rechten van de app worden gescopet tot specifieke mailboxen verleend via RBAC for Applications (`Application Mail Full Access` / `Application Mail.Send`, stap 4), niet via een tenant-brede Entra ID-consent. Voeg geen mailboxen toe aan de scopegroep die de relay niet nodig heeft. `Mail.ReadWrite` (onderdeel van `Application Mail Full Access`) geeft leestoegang tot de mailinhoud van gescopete mailboxen (nodig voor de grote-bijlage-flow) — houd `RELAY_FROM_ADDRESSES` beperkt tot adressen die daadwerkelijk voor verzenden worden gebruikt, of gebruik `GRAPH_LARGE_ATTACHMENTS=false` met de verzend-only rol `Application Mail.Send`.
 - **Roteer certificaten en secrets** — stel een herinnering in vóór het verlopen van `ENTRA_AUTH_TYPE=certificate`-certificaten (`-days 3650` = 10 jaar voor zelfondertekend). Client secrets verlopen op het schema ingesteld in Entra ID.
 

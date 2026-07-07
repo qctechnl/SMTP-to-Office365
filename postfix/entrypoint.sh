@@ -67,6 +67,10 @@ postconf -P "587/inet/smtpd_tls_security_level=${SUBMISSION_TLS_LEVEL:-may}"
 postconf -e "smtpd_tls_cert_file = ${SMTP_TLS_CERT_PATH:-/certs/smtp.crt}"
 postconf -e "smtpd_tls_key_file = ${SMTP_TLS_KEY_PATH:-/certs/smtp.key}"
 
+# Reverse DNS (PTR) lookup of the connecting client's IP (yes/no). Disable
+# for legacy senders on networks without usable DNS.
+postconf -e "smtpd_peername_lookup = ${SMTP_PEERNAME_LOOKUP:-yes}"
+
 # =============================================================================
 # Log level
 # error   = errors only

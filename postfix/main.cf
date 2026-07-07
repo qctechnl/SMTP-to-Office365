@@ -62,6 +62,15 @@ broken_sasl_auth_clients = yes
 # =============================================================================
 # Restrictions
 # =============================================================================
+
+# Reverse DNS (PTR) lookup of the connecting client's IP address, used only
+# for the Received: header and mail log (none of the restrictions below
+# depend on the client hostname). Overridden at startup by entrypoint.sh via
+# SMTP_PEERNAME_LOOKUP; value below is a static fallback (Postfix's own
+# default). Set SMTP_PEERNAME_LOOKUP=no for legacy/isolated senders without
+# usable DNS, where the lookup only adds connection delays or failures.
+smtpd_peername_lookup = yes
+
 smtpd_helo_required = yes
 
 smtpd_sender_restrictions =

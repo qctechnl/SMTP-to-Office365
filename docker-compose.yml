@@ -29,6 +29,9 @@ services:
       SMTP_TLS_LEVEL:         ${SMTP_TLS_LEVEL:-may}
       SUBMISSION_TLS_LEVEL:   ${SUBMISSION_TLS_LEVEL:-may}
 
+      # Reverse DNS (PTR) lookup of the connecting client (yes / no)
+      SMTP_PEERNAME_LOOKUP:   ${SMTP_PEERNAME_LOOKUP:-yes}
+
       # Inbound TLS certificate (encrypts SMTP connections from local applications)
       SMTP_TLS_CERT_PATH:     ${SMTP_TLS_CERT_PATH:-/certs/smtp.crt}
       SMTP_TLS_KEY_PATH:      ${SMTP_TLS_KEY_PATH:-/certs/smtp.key}

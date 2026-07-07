@@ -15,23 +15,27 @@ A containerised Postfix SMTP relay that delivers mail to Office 365 through the 
 ## Architecture
 
 ```
-Local applications
+Local applications / legacy systems
       │
-      │  SMTP (port 25 / 587)
-      │  TLS: optional or mandatory (configurable)
-      │  Auth: Authenticated or from allowed network (unauthenticated)
+      │  SMTP (port 25 or 587)
+      │  Port 25: unauthenticated, source IP must be in RELAY_ALLOWED_NETWORKS
+      │  Port 587: SASL-authenticated
+      │  TLS: optional or mandatory per port (configurable)
+      │  MAIL FROM must be one of RELAY_FROM_ADDRESSES (else rejected)
       ▼
-┌─────────────────────┐
-│   Postfix container │
-│                     │
-│  graph-send.py      │──── Entra ID (MSAL, client credentials flow)
-│                     │──── token.json (cached, refreshed on expiry)
-└─────────────────────┘
+┌───────────────────────────┐
+│  smtp-to-office365        │
+│  (Postfix)                │
+│                           │
+│  graph-send.py            │──── Entra ID (MSAL, client credentials flow)
+│  (runs as graph-send user)│──── token.json (cached, refreshed on expiry)
+└───────────────────────────┘
       │
-      │  HTTPS
-      │  Auth: OAuth2 (Bearer token, client credentials)
+      │  HTTPS — Microsoft Graph sendMail API
+      │  Auth: OAuth2 Bearer token (client credentials)
       ▼
-Microsoft Graph sendMail API
+Mailboxes in RELAY_FROM_ADDRESSES
+(access further scoped via RBAC for Applications in Exchange Online)
 ```
 
 ---
@@ -257,6 +261,20 @@ docker exec -it smtp-to-office365 manage-users.sh list
 docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 ```
 
+**Commands and parameters:**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `add` | `<username> <domain>` | Create a new user, or reset the password of an existing one. Prompts interactively for the password (entered twice; never passed on the command line, so it stays out of your shell history). |
+| `delete` | `<username> <domain>` | Remove a user from the database. |
+| `list` | *(none)* | List all users currently in the database. |
+
+- **`<username>`** — the login name (local part), e.g. `john`.
+- **`<domain>`** — the SASL realm, e.g. `example.com`. Username and domain together form the credential the client uses: the SMTP client authenticates as **`username@domain`** (e.g. `john@example.com`), with the password set via `add`.
+- The SASL login is **independent of the envelope sender**. An authenticated client may send as any address in `RELAY_FROM_ADDRESSES` (the `MAIL FROM` address is validated separately), so `<domain>` does not need to match the sender's domain — treat it purely as part of the account name.
+- `-it` is required for `add` so the interactive password prompt works; it is optional for `list` and `delete`.
+- Changes take effect immediately — no container restart is needed. The database persists on the host through the `SASLDB_DIR` bind mount, so users survive container recreation.
+
 > SASL authentication over plaintext is blocked by default. Set `SUBMISSION_TLS_LEVEL=encrypt` in `.env` to enforce TLS before allowing SASL on port 587.
 
 ---
@@ -279,6 +297,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 | `SUBMISSION_PORT` | no | `587` | Host port mapped to container port 587 |
 | `SMTP_TLS_LEVEL` | no | `may` | Inbound TLS on port 25: `none`, `may`, `encrypt` |
 | `SUBMISSION_TLS_LEVEL` | no | `may` | Inbound TLS on port 587: `none`, `may`, `encrypt` |
+| `SMTP_PEERNAME_LOOKUP` | no | `yes` | Reverse DNS (PTR) lookup of the connecting client's IP. `no` avoids connection delays/failures on networks without usable DNS; only affects the `Received:` header and mail log, not access control. |
 | `SMTP_TLS_CERT_PATH` | no | `/certs/smtp.crt` | Path inside container to the inbound SMTP TLS certificate |
 | `SMTP_TLS_KEY_PATH` | no | `/certs/smtp.key` | Path inside container to the inbound SMTP TLS private key |
 | `CERTS_DIR` | no | `./certs` | Host directory mounted as `/certs`; place both the inbound TLS cert and (when applicable) the Entra ID cert here |
@@ -294,6 +313,7 @@ docker exec -it smtp-to-office365 manage-users.sh delete john example.com
 - **SASL over plaintext is blocked** — `smtpd_sasl_security_options = noanonymous, noplaintext` prevents PLAIN/LOGIN without TLS. Use `SUBMISSION_TLS_LEVEL=encrypt` on port 587 to enforce TLS end-to-end.
 - **Token file permissions** — `token.json` is written with mode `600`, owned by `graph-send:graph-send`. It is stored inside the `postfix-queue` volume and readable only by the pipe transport user. The access token is never written to logs; `graph-send.py` logs it only at `LOG_LEVEL=verbose` with an explicit warning.
 - **Network restriction** — port 25 only permits `mynetworks`. Authenticated clients can additionally relay via port 587.
+- **Reverse DNS lookups** — enabled by default (`SMTP_PEERNAME_LOOKUP=yes`, standard Postfix behaviour). None of the restrictions in this configuration depend on the client hostname, so this only affects the `Received:` header and mail log, not access control. Set `SMTP_PEERNAME_LOOKUP=no` if legacy/isolated senders on networks without usable DNS cause connections to stall or fail on this lookup.
 - **Restrict the Entra ID app** — the app's Graph permissions are granted scoped to specific mailboxes via RBAC for Applications (`Application Mail Full Access` / `Application Mail.Send`, step 4), not via a tenant-wide Entra ID consent. Do not add mailboxes to the scope group that the relay does not need. Note that `Mail.ReadWrite` (part of `Application Mail Full Access`) allows reading mail content of scoped mailboxes (needed for the large-attachment draft flow) — keep `RELAY_FROM_ADDRESSES` limited to addresses actually used for sending, or use `GRAPH_LARGE_ATTACHMENTS=false` with the send-only `Application Mail.Send` role.
 - **Rotate certificates and secrets** — set a calendar reminder before `ENTRA_AUTH_TYPE=certificate` certificates expire (`-days 3650` = 10 years for self-signed). Client secrets expire on the schedule set in Entra ID.
 
