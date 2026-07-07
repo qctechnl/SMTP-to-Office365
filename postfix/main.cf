@@ -55,8 +55,9 @@ tls_preempt_cipherlist = yes
 smtpd_sasl_auth_enable = yes
 smtpd_sasl_type = cyrus
 smtpd_sasl_path = smtpd
-smtpd_sasl_security_options = noanonymous, noplaintext
+smtpd_sasl_security_options = noanonymous
 smtpd_sasl_tls_security_options = noanonymous
+smtpd_tls_auth_only = yes
 broken_sasl_auth_clients = yes
 
 # =============================================================================

@@ -105,9 +105,9 @@ postmap hash:/etc/postfix/sasl/allowed_senders
 # =============================================================================
 SASLDB_FILE="/var/lib/sasl2/sasldb2"
 
-mkdir -p /var/lib/sasl2 /etc/sasl2
+mkdir -p /var/lib/sasl2 /etc/postfix/sasl
 
-cat > /etc/sasl2/smtpd.conf << 'EOF'
+cat > /etc/postfix/sasl/smtpd.conf << 'EOF'
 pwcheck_method: auxprop
 auxprop_plugin: sasldb
 mech_list: PLAIN LOGIN
